@@ -172,9 +172,11 @@ class House(Source):
                 address=" / ".join(filter(None, [" ".join(filter(None, [o.get("address"), o.get("house_number")])),
                                                  o.get("crossing")])).replace("​", "").strip() or None,
                 lat=to_float(o.get("latitude")), lng=to_float(o.get("longitude")),
-                seller_type=card.get("role"),
+                # owner_type: 1 — собственник, 2 — компания/агентство; «Застройщик» в карточке уточняет тип
+                seller_type="developer" if card.get("role") == "developer" else
+                            {1: "owner", 2: "agency"}.get(o.get("owner_type"), card.get("role")),
                 # имя частного продавца не храним — только название компании/агентства
-                seller_name=o.get("user_name") if card.get("role") in ("agency", "developer") else None,
+                seller_name=o.get("user_name") if o.get("owner_type") == 2 or card.get("role") == "developer" else None,
                 complex_source_id=str(o["building_id"]) if o.get("building_id") else None,
                 mortgage=bool(o.get("mortgage")) or None, installment=bool(o.get("installment")) or None,
                 views=to_int(o.get("counter")),

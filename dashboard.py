@@ -20,6 +20,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import analysis_tab
+import deep_tab
 
 LOCAL_DB = Path(__file__).parent / "data" / "realty.db"
 # В облаке (Streamlit Community Cloud) локальной базы нет: свежая база лежит в ветке `data`
@@ -105,12 +106,12 @@ def load(db: str, stamp: float):
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     L = pd.read_sql("""select id, source, property_type, rooms, area_total, floor, floors_total, series, condition,
                               is_new_building, price_usd, price_m2_usd, old_price_usd, market_deviation_pct,
-                              city, district, district_norm, lat, lng, views, raw, seller_type, complex_name, developer_name, mortgage, installment,
+                              city, district, district_norm, lat, lng, views, raw, seller_type, complex_source_id, complex_name, developer_name, mortgage, installment,
                               published_at, first_seen, last_seen, is_active, removed_at, dup_group, url, title, address
                        from listings""", con,
                     parse_dates=["published_at", "first_seen", "last_seen", "removed_at"])
     H = pd.read_sql("select listing_id, seen_at, price_usd from price_history", con, parse_dates=["seen_at"])
-    C = pd.read_sql("""select id, name, url, city, address, housing_class, developer_name, developer_plan,
+    C = pd.read_sql("""select id, source_id, name, url, city, address, housing_class, developer_name, developer_plan,
                               price_m2_usd, finish_date, is_finished, rating, labels, gosstroy_url,
                               private_ads_count, rooms_data, first_seen
                        from complexes""", con, parse_dates=["finish_date", "first_seen"])
@@ -124,6 +125,14 @@ def load(db: str, stamp: float):
     L["is_flat"] = L["property_type"].fillna("flat") == "flat"
     L["days_on"] = ((now_utc() - L["published_at"].fillna(L["first_seen"])).dt.total_seconds() / 86400).clip(lower=1)
     L["demand_pct"] = demand_score(L)
+    # house.kg: тип продавца по коду сайта (для объявлений, собранных до исправления парсера)
+    is_house = L["source"].str.startswith("house")
+    ot = pd.Series(np.nan, index=L.index)
+    ot[is_house] = L.loc[is_house, "raw"].map(
+        lambda v: json.loads(v).get("owner_type") if isinstance(v, str) else None).astype(float)
+    fix = L["seller_type"].isna() | (L["seller_type"] == "owner")
+    L.loc[fix & (ot == 2), "seller_type"] = "agency"
+    L.loc[fix & (ot == 1), "seller_type"] = "owner"
     L = L.drop(columns=["raw"])
     # Прайс-лист застройщика: десятки лотов одного продавца в одном месте по одной цене за м².
     # В ценовой статистике такой прайс-лист считается одним объявлением, иначе он перекашивает район.
@@ -227,14 +236,18 @@ k[4].metric("Снято за 7 дней", f"{rem7:,}".replace(",", " "),
             help="Пропали с сайта при полном обходе — косвенный признак продажи")
 k[5].metric("Снижений цены за 7 дней", f"{len(drops7):,}".replace(",", " "))
 
-tabs = st.tabs(["Аналитика", "Обзор рынка", "Районы", "Новостройки и застройщики", "Динамика", "Источники", "Выгодные предложения"])
+tabs = st.tabs(["Аналитика", "Углублённый анализ", "Обзор рынка", "Районы", "Новостройки и застройщики", "Динамика", "Источники", "Выгодные предложения"])
 
 # ================================================================== Аналитика
 with tabs[0]:
     analysis_tab.render(L, C, city, srcs, now)
 
-# ================================================================== Обзор
+# ================================================================== Углублённый анализ
 with tabs[1]:
+    deep_tab.render(L, C, city, srcs, now)
+
+# ================================================================== Обзор
+with tabs[2]:
     # Авто-выводы
     ins = []
     if len(AU) > 30:
@@ -309,7 +322,7 @@ with tabs[1]:
     st.plotly_chart(fig_style(fig, 300), width="stretch")
 
 # ================================================================== Районы
-with tabs[2]:
+with tabs[3]:
     st.subheader("Медиана цены за м² по районам")
     minn = st.slider("Минимум объявлений в районе", 5, 100, 15, 5)
     d = AU[AU.district.notna()].groupby("district").agg(
@@ -331,7 +344,7 @@ with tabs[2]:
     st.plotly_chart(fig_style(fig, 320, legend=False), width="stretch")
 
 # ================================================================== Новостройки
-with tabs[3]:
+with tabs[4]:
     CB = C if city == "Все" else C[C.city == city]
     building = CB[CB.is_finished == 0]
     k2 = st.columns(4)
@@ -359,7 +372,7 @@ with tabs[3]:
         st.plotly_chart(fig_style(fig, legend=False), width="stretch")
 
     st.subheader("Плановая сдача ЖК по годам")
-    yrs = building[(building.finish_year >= now.year) & (CB.finish_year <= now.year + 5)]
+    yrs = building[(building.finish_year >= now.year) & (building.finish_year <= now.year + 5)]
     yy = yrs.groupby(["finish_year", "class_ru"]).size().reset_index(name="n")
     fig = px.bar(yy, x="finish_year", y="n", color="class_ru", category_orders={"class_ru": list(CLASS_COLORS)},
                  color_discrete_map=CLASS_COLORS, labels={"finish_year": "", "n": "ЖК", "class_ru": ""})
@@ -391,7 +404,7 @@ with tabs[3]:
         "gosstroy_url": st.column_config.LinkColumn("Минстрой", display_text="паспорт")})
 
 # ================================================================== Динамика
-with tabs[4]:
+with tabs[5]:
     days = (L.first_seen.max() - L.first_seen.min()).days if len(L) else 0
     if days < 7:
         st.info(f"История копится с {L.first_seen.min():%d.%m.%Y}. Графики динамики станут информативными "
@@ -441,7 +454,7 @@ with tabs[4]:
             "url": st.column_config.LinkColumn("Ссылка", display_text="открыть")})
 
 # ================================================================== Источники
-with tabs[5]:
+with tabs[6]:
     st.subheader("Сравнение источников")
     srcs_df = A.groupby("source").agg(
         активных=("id", "size"),
@@ -472,7 +485,7 @@ with tabs[5]:
                  width="stretch", hide_index=True, height=300)
 
 # ================================================================== Выгодные
-with tabs[6]:
+with tabs[7]:
     st.subheader("Дешевле медианы своего района")
     st.caption("Сравнение с медианой $/м² по тому же району, комнатности и сегменту (группы от 8 объявлений).")
     grp = ["district", "rooms_g", "segment"]
