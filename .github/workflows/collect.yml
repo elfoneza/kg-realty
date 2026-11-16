@@ -1,0 +1,72 @@
+# Сбор объявлений по расписанию на серверах GitHub.
+# База хранится сжатой в ветке `data` (один коммит, перезаписывается — история не копится),
+# дашборд на Streamlit Cloud скачивает её оттуда.
+name: collect
+
+on:
+  schedule:
+    - cron: "7 * * * *"     # каждый час: свежие объявления (первые страницы каждого сайта)
+    - cron: "0 21 * * *"    # 03:00 по Бишкеку: полный обход, отметка снятых объявлений
+    - cron: "30 23 * * *"   # 05:30 по Бишкеку: каталог ЖК elitka.kg
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "fresh / full / complexes"
+        default: fresh
+
+permissions:
+  contents: write
+
+concurrency:
+  group: collect          # запуски не пересекаются и не пишут базу одновременно
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Режим запуска
+        id: mode
+        run: |
+          MODE="${{ github.event.inputs.mode }}"
+          case "${{ github.event.schedule }}" in
+            "0 21 * * *")  MODE=full ;;
+            "30 23 * * *") MODE=complexes ;;
+            "7 * * * *")   MODE=fresh ;;
+          esac
+          echo "mode=${MODE:-fresh}" >> "$GITHUB_OUTPUT"
+
+      - name: Загрузить текущую базу из ветки data
+        run: |
+          mkdir -p data
+          if git fetch --depth 1 origin data; then
+            git show origin/data:realty.db.gz | gunzip > data/realty.db
+            ls -lh data/realty.db
+          else
+            echo "Ветки data ещё нет — начинаем с пустой базы"
+          fi
+
+      - name: Сбор
+        run: |
+          case "${{ steps.mode.outputs.mode }}" in
+            full)      uv run python -m kg_realty collect --mode full ;;
+            complexes) uv run python -m kg_realty complexes ;;
+            *)         uv run python -m kg_realty collect --mode fresh --pages 5 ;;
+          esac
+          uv run python -m kg_realty stats
+
+      - name: Сохранить базу в ветку data
+        run: |
+          uv run python -m kg_realty export out/realty.db.gz
+          cd out
+          git init -q -b data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add realty.db.gz
+          git commit -q -m "data $(date -u +%Y-%m-%dT%H:%MZ) (${{ steps.mode.outputs.mode }})"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" data
