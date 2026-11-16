@@ -16,6 +16,9 @@ log = logging.getLogger("kg_realty")
 
 SKIP_UPDATE = {"source_id"}
 
+# Пауза между запросами к сайту, секунды. etagi ограничивает частоту запросов строже остальных.
+SITE_DELAY = {"etagi": 5.0}
+
 
 def current_rate() -> float:
     """Курс сом/$ по свежим объявлениям, где сайт сам показывает обе цены."""
@@ -71,7 +74,7 @@ def collect(source: str, mode: str = "fresh", max_pages: int = 3, rate: float | 
     mode=full — весь каталог; после полного обхода непросмотренные объявления помечаются снятыми."""
     rate = rate or current_rate()
     src = LISTING_SOURCES[source](rate=rate)
-    f = Fetcher()
+    f = Fetcher(delay=SITE_DELAY.get(source.split("_")[0], 2.0))
     with Session() as s:
         run = Run(source=source, mode=mode)
         s.add(run)

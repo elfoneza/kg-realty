@@ -26,9 +26,17 @@ log = logging.getLogger("kg_realty")
 def run_all(sources, mode, pages):
     rate = current_rate()
     log.info("Курс для пересчёта сом→$: %s", rate)
-    # Сайты обходятся параллельно, но внутри одного сайта — строго по очереди с паузой
-    with ThreadPoolExecutor(max_workers=len(sources)) as ex:
-        runs = list(ex.map(lambda s: collect(s, mode, pages, rate), sources))
+    # Разные сайты обходятся параллельно, а разделы одного сайта (квартиры, коммерция) —
+    # строго по очереди, чтобы на один сайт никогда не шло больше одного потока запросов.
+    by_site: dict[str, list[str]] = {}
+    for s in sources:
+        by_site.setdefault(s.split("_")[0], []).append(s)
+
+    def run_site(group):
+        return [collect(s, mode, pages, rate) for s in group]
+
+    with ThreadPoolExecutor(max_workers=len(by_site)) as ex:
+        runs = [r for group in ex.map(run_site, by_site.values()) for r in group]
     link_complexes()
     groups = dedup()
     log.info("Районы назначены: %s объявлений", assign_districts())
