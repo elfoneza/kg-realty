@@ -52,11 +52,14 @@ jobs:
           fi
 
       - name: Сбор
+        # lalafo.kg блокирует серверы дата-центров (403), поэтому в облаке не собирается
+        env:
+          SOURCES: house,stroka,etagi,elitka,house_com,stroka_com,etagi_com
         run: |
           case "${{ steps.mode.outputs.mode }}" in
-            full)      uv run python -m kg_realty collect --mode full ;;
+            full)      uv run python -m kg_realty collect -s "$SOURCES" --mode full ;;
             complexes) uv run python -m kg_realty complexes ;;
-            *)         uv run python -m kg_realty collect --mode fresh --pages 5 ;;
+            *)         uv run python -m kg_realty collect -s "$SOURCES" --mode fresh --pages 5 ;;
           esac
           uv run python -m kg_realty stats
 

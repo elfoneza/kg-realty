@@ -38,7 +38,7 @@ COND_RU = {"pso": "ПСО", "euro": "Евроремонт", "designer": "Диз�
            "average": "Средний/старый", "unfinished": "Не достроено"}
 SELLER_RU = {"owner": "Собственник", "agency": "Агентство/риелтор", "developer": "Застройщик"}
 ROOMS_RU = {0: "Студия", 1: "1-комн.", 2: "2-комн.", 3: "3-комн.", 4: "4+ комн."}
-SOURCE_RU = {"lalafo": "lalafo.kg", "house": "house.kg", "stroka": "stroka.kg",
+SOURCE_RU = {"lalafo": "lalafo.kg (данные на 16.11.2026)", "house": "house.kg", "stroka": "stroka.kg",
              "etagi": "etagi (агентство)", "elitka": "elitka.kg"}
 BLUE = SERIES[0]
 
@@ -172,14 +172,18 @@ def fmt_usd(v):
 # ------------------------------------------------------------------ шапка и фильтры
 last_run = R["finished_at"].max()
 st.title("Рынок недвижимости Кыргызстана")
-st.caption(f"Источники: lalafo.kg, house.kg, stroka.kg, etagi, elitka.kg · последнее обновление базы: "
+st.caption(f"Источники: house.kg, stroka.kg, etagi, elitka.kg (lalafo.kg — архив на 16.11.2026) · последнее обновление базы: "
            f"{(last_run + timedelta(hours=6)).strftime('%d.%m.%Y %H:%M') if pd.notna(last_run) else '—'} (Бишкек)")
 
 f1, f2, f3, f4, f5, f6 = st.columns([1.2, 1.4, 1.3, 1.2, 1.3, .6])
 cities = L.loc[L.is_active == 1, "city"].value_counts()
 city = f1.selectbox("Город", ["Все"] + cities.index[:30].tolist(),
                     index=1 + cities.index[:30].tolist().index("Бишкек") if "Бишкек" in cities.index[:30] else 0)
-srcs = f2.multiselect("Источники", list(SOURCE_RU), default=list(SOURCE_RU), format_func=SOURCE_RU.get)
+# lalafo.kg больше не обновляется (блокирует серверы GitHub), поэтому по умолчанию выключен:
+# его объявления никогда не помечаются снятыми и искажали бы картину текущего рынка.
+srcs = f2.multiselect("Источники", list(SOURCE_RU), default=[s for s in SOURCE_RU if s != "lalafo"],
+                      format_func=SOURCE_RU.get,
+                      help="lalafo.kg не обновляется с 16.11.2026: сайт блокирует облачные серверы")
 ROOM_OPTS = list(ROOMS_RU.values()) + ["Не указано"]
 rooms = f3.multiselect("Комнатность", ROOM_OPTS, default=ROOM_OPTS)
 segment = f4.selectbox("Сегмент", ["Все", "Новостройка", "Вторичка"])

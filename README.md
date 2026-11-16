@@ -60,6 +60,8 @@ uv run streamlit run dashboard.py      # откроется http://localhost:850
 ## Онлайн-версия (GitHub + Streamlit Community Cloud)
 - **Сбор** — `.github/workflows/collect.yml`: каждый час свежие объявления, в 03:00 (Бишкек) полный обход,
   в 05:30 каталог ЖК. Ручной запуск: вкладка Actions → collect → Run workflow.
+- **lalafo.kg** в облаке не собирается: сайт блокирует серверы дата-центров (403). Его данные в базе — архив
+  на 16.11.2026; в дашборде lalafo по умолчанию выключен (можно включить в фильтре «Источники»).
 - **База** — сжатая (`realty.db.gz`) в ветке `data`; ветка перезаписывается одним коммитом, история не копится.
 - **Дашборд** — Streamlit Community Cloud, файл `dashboard.py`. В настройках приложения (Secrets) задан
   `DATA_URL = "https://raw.githubusercontent.com/<владелец>/<репозиторий>/data/realty.db.gz"`.
