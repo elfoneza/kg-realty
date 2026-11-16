@@ -24,7 +24,7 @@ import analysis_tab
 LOCAL_DB = Path(__file__).parent / "data" / "realty.db"
 # В облаке (Streamlit Community Cloud) локальной базы нет: свежая база лежит в ветке `data`
 # репозитория и обновляется GitHub Actions. Адрес задаётся в DATA_URL (переменная окружения или secrets).
-DATA_URL = os.environ.get("DATA_URL", "")
+DATA_URL = os.environ.get("DATA_URL", "https://raw.githubusercontent.com/elfoneza/kg-realty/data/realty.db.gz")
 
 # Палитра: категориальные цвета в фиксированном порядке (не по рангу),
 # классы жилья — упорядоченная одноцветная шкала от светлого к тёмному.
